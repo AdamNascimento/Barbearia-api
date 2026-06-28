@@ -67,6 +67,77 @@ app.delete('/agendamentos/:id', async (req, res) => {
     res.json({ mensagem: 'Agendamento excluído com sucesso' });
 });
 
+// ===== CONFIGURAÇÕES =====
+
+// Serviços
+app.get('/configuracoes/servicos', async (req, res) => {
+    const [rows] = await db.execute('SELECT * FROM servicos WHERE ativo = 1 ORDER BY nome');
+    res.json(rows);
+});
+
+app.post('/configuracoes/servicos', async (req, res) => {
+    const { nome } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome obrigatório' });
+    const [result] = await db.execute('INSERT INTO servicos (nome) VALUES (?)', [nome]);
+    res.status(201).json({ id: result.insertId, nome });
+});
+
+app.delete('/configuracoes/servicos/:id', async (req, res) => {
+    await db.execute('UPDATE servicos SET ativo = 0 WHERE id = ?', [req.params.id]);
+    res.json({ mensagem: 'Serviço removido' });
+});
+
+// Formas de pagamento
+app.get('/configuracoes/pagamentos', async (req, res) => {
+    const [rows] = await db.execute('SELECT * FROM formas_pagamento WHERE ativo = 1 ORDER BY nome');
+    res.json(rows);
+});
+
+app.post('/configuracoes/pagamentos', async (req, res) => {
+    const { nome } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome obrigatório' });
+    const [result] = await db.execute('INSERT INTO formas_pagamento (nome) VALUES (?)', [nome]);
+    res.status(201).json({ id: result.insertId, nome });
+});
+
+app.delete('/configuracoes/pagamentos/:id', async (req, res) => {
+    await db.execute('UPDATE formas_pagamento SET ativo = 0 WHERE id = ?', [req.params.id]);
+    res.json({ mensagem: 'Forma de pagamento removida' });
+});
+
+// Barbeiros
+app.get('/configuracoes/barbeiros', async (req, res) => {
+    const [rows] = await db.execute('SELECT * FROM barbeiros WHERE ativo = 1 ORDER BY nome');
+    res.json(rows);
+});
+
+app.post('/configuracoes/barbeiros', async (req, res) => {
+    const { nome } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome obrigatório' });
+    const [result] = await db.execute('INSERT INTO barbeiros (nome) VALUES (?)', [nome]);
+    res.status(201).json({ id: result.insertId, nome });
+});
+
+app.delete('/configuracoes/barbeiros/:id', async (req, res) => {
+    await db.execute('UPDATE barbeiros SET ativo = 0 WHERE id = ?', [req.params.id]);
+    res.json({ mensagem: 'Barbeiro removido' });
+});
+
+// Horários
+app.get('/configuracoes/horarios', async (req, res) => {
+    const [rows] = await db.execute('SELECT * FROM horarios ORDER BY hora_inicio');
+    res.json(rows);
+});
+
+app.put('/configuracoes/horarios', async (req, res) => {
+    const { hora_inicio, hora_fim, intervalo_minutos } = req.body;
+    await db.execute(
+        'UPDATE horarios SET hora_inicio = ?, hora_fim = ?, intervalo_minutos = ? WHERE id = 1',
+        [hora_inicio, hora_fim, intervalo_minutos]
+    );
+    res.json({ mensagem: 'Horários atualizados' });
+});
+
 app.listen(port, () => console.log(`Servidor na porta ${port}`));
 
 // Listar assinantes
