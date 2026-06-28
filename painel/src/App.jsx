@@ -10,10 +10,10 @@ function App() {
   // --- Agendamentos ---
   const [agendamentos, setAgendamentos] = useState([]);
   const [nome, setNome] = useState("");
-  const [servico, setServico] = useState("Corte");
+  const [servico, setServico] = useState("");
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
-  const [pagamento, setPagamento] = useState("PIX");
+  const [pagamento, setPagamento] = useState("");
   const [message, setMessage] = useState({ type: "", text: "" });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [agendamentoToDelete, setAgendamentoToDelete] = useState(null);
@@ -31,19 +31,32 @@ function App() {
   const [showDeleteAssModal, setShowDeleteAssModal] = useState(false);
   const [assinanteToDelete, setAssinanteToDelete] = useState(null);
 
-  const servicosOptions = ["Corte", "Barba", "Corte + Barba", "Sobrancelha", "Progressiva"];
-  const pagamentoOptions = ["PIX", "Dinheiro", "Cartão de Crédito", "Cartão de Débito"];
-  const statusOptions = ["Pendente", "Confirmado", "Concluído", "Cancelado"];
-  const barbeirosOptions = ["Barbeiro1", "Barbeiro2", "Barbeiro3"];
-  const planosOptions = ["Plano2", "Plano2", "Plano3", "Plano4", "Plano5", "Plano6"];
+  // --- Configurações ---
+  const [servicosOptions, setServicosOptions] = useState([]);
+  const [pagamentoOptions, setPagamentoOptions] = useState([]);
+  const [barbeirosOptions, setBarbeirosOptions] = useState([]);
+  const [horariosConfig, setHorariosConfig] = useState({ hora_inicio: "08:00", hora_fim: "20:00", intervalo_minutos: 30 });
+  const [servicosRaw, setServicosRaw] = useState([]);
+  const [pagamentosRaw, setPagamentosRaw] = useState([]);
+  const [barbeirosRaw, setBarbeirosRaw] = useState([]);
+  const [novoServico, setNovoServico] = useState("");
+  const [novoPagamento, setNovoPagamento] = useState("");
+  const [novoBarbeiro, setNovoBarbeiro] = useState("");
+  const [configMessage, setConfigMessage] = useState({ type: "", text: "" });
 
+  const statusOptions = ["Pendente", "Confirmado", "Concluído", "Cancelado"];
+  const planosOptions = ["Master", "Sênior", "Premium", "Master MAX", "Sênior MAX", "Premium MAX"];
+
+  // Gera horários dinamicamente com base na configuração do banco
   const generateTimeOptions = () => {
     const times = [];
-    for (let i = 8; i <= 20; i++) {
-      for (let j = 0; j < 60; j += 30) {
-        const hour = String(i).padStart(2, "0");
-        const minute = String(j).padStart(2, "0");
-        times.push(`${hour}:${minute}`);
+    const [startH] = horariosConfig.hora_inicio.split(":").map(Number);
+    const [endH] = horariosConfig.hora_fim.split(":").map(Number);
+    const intervalo = horariosConfig.intervalo_minutos;
+    for (let i = startH; i <= endH; i++) {
+      for (let j = 0; j < 60; j += intervalo) {
+        if (i === endH && j > 0) break;
+        times.push(`${String(i).padStart(2, "0")}:${String(j).padStart(2, "0")}`);
       }
     }
     return times;
@@ -73,8 +86,7 @@ function App() {
     hoje.setHours(0, 0, 0, 0);
     const venc = new Date(dataVencimento);
     venc.setHours(0, 0, 0, 0);
-    const diff = Math.round((venc - hoje) / (1000 * 60 * 60 * 24));
-    return diff;
+    return Math.round((venc - hoje) / (1000 * 60 * 60 * 24));
   };
 
   const getStatusAssinante = (dias) => {
@@ -87,7 +99,28 @@ function App() {
   useEffect(() => {
     buscarAgendamentos();
     buscarAssinantes();
+    buscarConfiguracoes();
   }, []);
+
+  const buscarConfiguracoes = async () => {
+    try {
+      const [servicos, pagamentos, barbeiros, horarios] = await Promise.all([
+        axios.get(`${API}/configuracoes/servicos`),
+        axios.get(`${API}/configuracoes/pagamentos`),
+        axios.get(`${API}/configuracoes/barbeiros`),
+        axios.get(`${API}/configuracoes/horarios`),
+      ]);
+      setServicosRaw(servicos.data);
+      setPagamentosRaw(pagamentos.data);
+      setBarbeirosRaw(barbeiros.data);
+      setServicosOptions(servicos.data.map(s => s.nome));
+      setPagamentoOptions(pagamentos.data.map(p => p.nome));
+      setBarbeirosOptions(barbeiros.data.map(b => b.nome));
+      if (horarios.data.length > 0) setHorariosConfig(horarios.data[0]);
+    } catch (error) {
+      console.error("Erro ao buscar configurações:", error);
+    }
+  };
 
   const buscarAgendamentos = async () => {
     try {
@@ -117,7 +150,7 @@ function App() {
     try {
       await axios.post(`${API}/agendamentos`, { nome, servico, data, hora: `${hora}:00`, pagamento });
       setMessage({ type: "success", text: "Agendamento criado com sucesso!" });
-      setNome(""); setServico("Corte"); setData(""); setHora(""); setPagamento("PIX");
+      setNome(""); setServico(""); setData(""); setHora(""); setPagamento("");
       buscarAgendamentos();
     } catch (error) {
       setMessage({ type: "error", text: "Erro ao criar agendamento." });
@@ -135,7 +168,8 @@ function App() {
 
   const handleUpdateBarbeiro = async (id, newBarbeiro) => {
     try {
-      await axios.put(`${API}/agendamentos/${id}`, { status: agendamentos.find(a => a.id === id).status, barbeiro: newBarbeiro });
+      const agendamento = agendamentos.find(a => a.id === id);
+      await axios.put(`${API}/agendamentos/${id}`, { status: agendamento.status, barbeiro: newBarbeiro });
       buscarAgendamentos();
     } catch (error) {
       setMessage({ type: "error", text: "Erro ao atualizar barbeiro." });
@@ -198,6 +232,83 @@ function App() {
     setAssinanteToDelete(null);
   };
 
+  // --- Configurações handlers ---
+  const handleAddServico = async () => {
+    if (!novoServico.trim()) return;
+    try {
+      await axios.post(`${API}/configuracoes/servicos`, { nome: novoServico });
+      setNovoServico("");
+      setConfigMessage({ type: "success", text: "Serviço adicionado!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao adicionar serviço." });
+    }
+  };
+
+  const handleRemoveServico = async (id) => {
+    try {
+      await axios.delete(`${API}/configuracoes/servicos/${id}`);
+      setConfigMessage({ type: "success", text: "Serviço removido!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao remover serviço." });
+    }
+  };
+
+  const handleAddPagamento = async () => {
+    if (!novoPagamento.trim()) return;
+    try {
+      await axios.post(`${API}/configuracoes/pagamentos`, { nome: novoPagamento });
+      setNovoPagamento("");
+      setConfigMessage({ type: "success", text: "Forma de pagamento adicionada!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao adicionar pagamento." });
+    }
+  };
+
+  const handleRemovePagamento = async (id) => {
+    try {
+      await axios.delete(`${API}/configuracoes/pagamentos/${id}`);
+      setConfigMessage({ type: "success", text: "Forma de pagamento removida!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao remover pagamento." });
+    }
+  };
+
+  const handleAddBarbeiro = async () => {
+    if (!novoBarbeiro.trim()) return;
+    try {
+      await axios.post(`${API}/configuracoes/barbeiros`, { nome: novoBarbeiro });
+      setNovoBarbeiro("");
+      setConfigMessage({ type: "success", text: "Barbeiro adicionado!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao adicionar barbeiro." });
+    }
+  };
+
+  const handleRemoveBarbeiro = async (id) => {
+    try {
+      await axios.delete(`${API}/configuracoes/barbeiros/${id}`);
+      setConfigMessage({ type: "success", text: "Barbeiro removido!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao remover barbeiro." });
+    }
+  };
+
+  const handleSalvarHorarios = async () => {
+    try {
+      await axios.put(`${API}/configuracoes/horarios`, horariosConfig);
+      setConfigMessage({ type: "success", text: "Horários atualizados!" });
+      buscarConfiguracoes();
+    } catch (error) {
+      setConfigMessage({ type: "error", text: "Erro ao salvar horários." });
+    }
+  };
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const day = String(date.getUTCDate()).padStart(2, "0");
@@ -219,6 +330,9 @@ function App() {
         <button className={`aba-btn ${aba === "villaclube" ? "aba-ativa" : ""}`} onClick={() => setAba("villaclube")}>
           ⭐ Villa Clube
         </button>
+        <button className={`aba-btn ${aba === "configuracoes" ? "aba-ativa" : ""}`} onClick={() => setAba("configuracoes")}>
+          ⚙️ Configurações
+        </button>
       </div>
 
       {/* ===== ABA AGENDAMENTOS ===== */}
@@ -227,26 +341,11 @@ function App() {
           {message.text && <div className={`message ${message.type}`}>{message.text}</div>}
 
           <div className="cards-container">
-            <div className="card card-total">
-              <span className="card-numero">{resumo.total}</span>
-              <span className="card-label">Hoje</span>
-            </div>
-            <div className="card card-pendente">
-              <span className="card-numero">{resumo.pendentes}</span>
-              <span className="card-label">Pendentes</span>
-            </div>
-            <div className="card card-confirmado">
-              <span className="card-numero">{resumo.confirmados}</span>
-              <span className="card-label">Confirmados</span>
-            </div>
-            <div className="card card-concluido">
-              <span className="card-numero">{resumo.concluidos}</span>
-              <span className="card-label">Concluídos</span>
-            </div>
-            <div className="card card-cancelado">
-              <span className="card-numero">{resumo.cancelados}</span>
-              <span className="card-label">Cancelados</span>
-            </div>
+            <div className="card card-total"><span className="card-numero">{resumo.total}</span><span className="card-label">Hoje</span></div>
+            <div className="card card-pendente"><span className="card-numero">{resumo.pendentes}</span><span className="card-label">Pendentes</span></div>
+            <div className="card card-confirmado"><span className="card-numero">{resumo.confirmados}</span><span className="card-label">Confirmados</span></div>
+            <div className="card card-concluido"><span className="card-numero">{resumo.concluidos}</span><span className="card-label">Concluídos</span></div>
+            <div className="card card-cancelado"><span className="card-numero">{resumo.cancelados}</span><span className="card-label">Cancelados</span></div>
           </div>
 
           <h2 className="section-title">Novo Agendamento</h2>
@@ -259,6 +358,7 @@ function App() {
               <div className="form-group">
                 <label>Serviço</label>
                 <select value={servico} onChange={(e) => setServico(e.target.value)} required>
+                  <option value="" disabled>Selecione</option>
                   {servicosOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               </div>
@@ -276,6 +376,7 @@ function App() {
               <div className="form-group">
                 <label>Pagamento</label>
                 <select value={pagamento} onChange={(e) => setPagamento(e.target.value)} required>
+                  <option value="" disabled>Selecione</option>
                   {pagamentoOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               </div>
@@ -301,14 +402,8 @@ function App() {
             <table>
               <thead>
                 <tr>
-                  <th>Data</th>
-                  <th>Horário</th>
-                  <th>Cliente</th>
-                  <th>Serviço</th>
-                  <th>Barbeiro</th>
-                  <th>Pagamento</th>
-                  <th>Status</th>
-                  <th>Ações</th>
+                  <th>Data</th><th>Horário</th><th>Cliente</th><th>Serviço</th>
+                  <th>Barbeiro</th><th>Pagamento</th><th>Status</th><th>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -325,28 +420,18 @@ function App() {
                       <td>{a.nome}</td>
                       <td>{a.servico}</td>
                       <td>
-                        <select
-                          value={a.barbeiro || ""}
-                          onChange={(e) => handleUpdateBarbeiro(a.id, e.target.value)}
-                          className="select-barbeiro"
-                        >
+                        <select value={a.barbeiro || ""} onChange={(e) => handleUpdateBarbeiro(a.id, e.target.value)} className="select-barbeiro">
                           <option value="">—</option>
                           {barbeirosOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       </td>
                       <td>{a.pagamento}</td>
                       <td>
-                        <select
-                          value={a.status}
-                          onChange={(e) => handleUpdateStatus(a.id, e.target.value)}
-                          className={`status-${a.status.toLowerCase().replace(/ /g, "-")}`}
-                        >
+                        <select value={a.status} onChange={(e) => handleUpdateStatus(a.id, e.target.value)} className={`status-${a.status.toLowerCase().replace(/ /g, "-")}`}>
                           {statusOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       </td>
-                      <td>
-                        <button onClick={() => handleDeleteConfirmation(a)} className="btn btn-delete">🗑️</button>
-                      </td>
+                      <td><button onClick={() => handleDeleteConfirmation(a)} className="btn btn-delete">🗑️</button></td>
                     </tr>
                   ))}
               </tbody>
@@ -359,32 +444,19 @@ function App() {
       {aba === "villaclube" && (
         <>
           {assMessage.text && <div className={`message ${assMessage.type}`}>{assMessage.text}</div>}
-
           <h2 className="section-title">Novo Assinante</h2>
           <form onSubmit={handleCreateAssinante}>
             <div className="form-grid">
-              <div className="form-group">
-                <label>Nome</label>
-                <input type="text" value={assNome} onChange={(e) => setAssNome(e.target.value)} required />
-              </div>
-              <div className="form-group">
-                <label>Telefone</label>
-                <input type="text" value={assTelefone} onChange={(e) => setAssTelefone(e.target.value)} placeholder="(71) 99999-9999" />
-              </div>
+              <div className="form-group"><label>Nome</label><input type="text" value={assNome} onChange={(e) => setAssNome(e.target.value)} required /></div>
+              <div className="form-group"><label>Telefone</label><input type="text" value={assTelefone} onChange={(e) => setAssTelefone(e.target.value)} placeholder="(71) 99999-9999" /></div>
               <div className="form-group">
                 <label>Plano</label>
                 <select value={assPlano} onChange={(e) => setAssPlano(e.target.value)} required>
                   {planosOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label>Data de Início</label>
-                <input type="date" value={assInicio} onChange={(e) => setAssInicio(e.target.value)} required />
-              </div>
-              <div className="form-group">
-                <label>Data de Vencimento</label>
-                <input type="date" value={assVencimento} onChange={(e) => setAssVencimento(e.target.value)} required />
-              </div>
+              <div className="form-group"><label>Data de Início</label><input type="date" value={assInicio} onChange={(e) => setAssInicio(e.target.value)} required /></div>
+              <div className="form-group"><label>Data de Vencimento</label><input type="date" value={assVencimento} onChange={(e) => setAssVencimento(e.target.value)} required /></div>
             </div>
             <button type="submit" className="btn">Cadastrar Assinante</button>
           </form>
@@ -393,16 +465,7 @@ function App() {
           <div className="table-container">
             <table>
               <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Telefone</th>
-                  <th>Plano</th>
-                  <th>Início</th>
-                  <th>Vencimento</th>
-                  <th>Dias Restantes</th>
-                  <th>Status</th>
-                  <th>Ações</th>
-                </tr>
+                <tr><th>Cliente</th><th>Telefone</th><th>Plano</th><th>Início</th><th>Vencimento</th><th>Dias Restantes</th><th>Status</th><th>Ações</th></tr>
               </thead>
               <tbody>
                 {assinantes.map((a) => {
@@ -419,14 +482,99 @@ function App() {
                         {dias < 0 ? `${Math.abs(dias)} dia${Math.abs(dias) > 1 ? "s" : ""} atrás` : dias === 0 ? "Hoje" : `${dias} dia${dias > 1 ? "s" : ""}`}
                       </td>
                       <td className={statusAss.classe}>{statusAss.label}</td>
-                      <td>
-                        <button onClick={() => handleDeleteAssinanteConfirmation(a)} className="btn btn-delete">🗑️</button>
-                      </td>
+                      <td><button onClick={() => handleDeleteAssinanteConfirmation(a)} className="btn btn-delete">🗑️</button></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </>
+      )}
+
+      {/* ===== ABA CONFIGURAÇÕES ===== */}
+      {aba === "configuracoes" && (
+        <>
+          {configMessage.text && <div className={`message ${configMessage.type}`}>{configMessage.text}</div>}
+
+          <div className="config-grid">
+
+            {/* Serviços */}
+            <div className="config-card">
+              <h3 className="config-title">✂️ Serviços</h3>
+              <div className="config-add">
+                <input type="text" placeholder="Novo serviço..." value={novoServico} onChange={(e) => setNovoServico(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddServico()} />
+                <button className="btn" onClick={handleAddServico}>Adicionar</button>
+              </div>
+              <ul className="config-list">
+                {servicosRaw.map((s) => (
+                  <li key={s.id}>
+                    <span>{s.nome}</span>
+                    <button onClick={() => handleRemoveServico(s.id)} className="btn-remove">✕</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Pagamentos */}
+            <div className="config-card">
+              <h3 className="config-title">💳 Formas de Pagamento</h3>
+              <div className="config-add">
+                <input type="text" placeholder="Nova forma..." value={novoPagamento} onChange={(e) => setNovoPagamento(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddPagamento()} />
+                <button className="btn" onClick={handleAddPagamento}>Adicionar</button>
+              </div>
+              <ul className="config-list">
+                {pagamentosRaw.map((p) => (
+                  <li key={p.id}>
+                    <span>{p.nome}</span>
+                    <button onClick={() => handleRemovePagamento(p.id)} className="btn-remove">✕</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Barbeiros */}
+            <div className="config-card">
+              <h3 className="config-title">💈 Barbeiros</h3>
+              <div className="config-add">
+                <input type="text" placeholder="Nome do barbeiro..." value={novoBarbeiro} onChange={(e) => setNovoBarbeiro(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddBarbeiro()} />
+                <button className="btn" onClick={handleAddBarbeiro}>Adicionar</button>
+              </div>
+              <ul className="config-list">
+                {barbeirosRaw.map((b) => (
+                  <li key={b.id}>
+                    <span>{b.nome}</span>
+                    <button onClick={() => handleRemoveBarbeiro(b.id)} className="btn-remove">✕</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Horários */}
+            <div className="config-card">
+              <h3 className="config-title">🕐 Horários de Atendimento</h3>
+              <div className="form-grid" style={{ marginBottom: "1rem" }}>
+                <div className="form-group">
+                  <label>Início</label>
+                  <input type="time" value={horariosConfig.hora_inicio} onChange={(e) => setHorariosConfig({ ...horariosConfig, hora_inicio: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Fim</label>
+                  <input type="time" value={horariosConfig.hora_fim} onChange={(e) => setHorariosConfig({ ...horariosConfig, hora_fim: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Intervalo (minutos)</label>
+                  <select value={horariosConfig.intervalo_minutos} onChange={(e) => setHorariosConfig({ ...horariosConfig, intervalo_minutos: parseInt(e.target.value) })}>
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={45}>45 min</option>
+                    <option value={60}>60 min</option>
+                  </select>
+                </div>
+              </div>
+              <button className="btn" onClick={handleSalvarHorarios}>Salvar Horários</button>
+            </div>
+
           </div>
         </>
       )}
