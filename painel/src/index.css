@@ -1,0 +1,10 @@
+/* index.css */
+/* Reset de estilos básicos e importação de fontes, se necessário */
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Adicione aqui quaisquer estilos globais que não sejam específicos do App.jsx */
